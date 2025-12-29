@@ -1,0 +1,86 @@
+[package]
+name = "wayoa"
+version = "0.1.0"
+edition = "2021"
+authors = ["Eric Curtin"]
+description = "A Wayland compositor for macOS, using Cocoa as its backend"
+license = "Apache-2.0"
+repository = "https://github.com/ericcurtin/wayoa"
+readme = "README.md"
+keywords = ["wayland", "compositor", "macos", "cocoa", "metal"]
+categories = ["gui", "rendering"]
+
+[dependencies]
+# Wayland server implementation
+wayland-server = "0.31"
+wayland-protocols = { version = "0.32", features = ["server"] }
+wayland-protocols-wlr = { version = "0.3", features = ["server"] }
+
+# Event loop
+calloop = "0.14"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# XKB for keyboard handling
+xkbcommon = { version = "0.8", features = ["wayland"] }
+
+# Bitflags for protocol flags
+bitflags = "2"
+
+# For safe Objective-C/Cocoa bindings (macOS only)
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSObject", "NSThread", "NSArray", "NSDictionary", "NSEnumerator"] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSWindow",
+    "NSView",
+    "NSEvent",
+    "NSScreen",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSGraphics",
+    "NSMenu",
+    "NSMenuItem",
+    "NSColor",
+] }
+objc2-quartz-core = { version = "0.3", features = ["CAMetalLayer", "CALayer"] }
+objc2-metal = { version = "0.3", features = [
+    "MTLDevice",
+    "MTLCommandQueue",
+    "MTLCommandBuffer",
+    "MTLRenderCommandEncoder",
+    "MTLRenderPipeline",
+    "MTLTexture",
+    "MTLLibrary",
+    "MTLDrawable",
+    "MTLPixelFormat",
+    "MTLResource",
+    "MTLVertexDescriptor",
+] }
+
+# For cross-platform memory mapping (shm buffers)
+memmap2 = "0.9"
+
+# For file descriptor handling
+rustix = { version = "1", features = ["fs", "mm"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = []
+
+[[bin]]
+name = "wayoa"
+path = "src/main.rs"
+
+[lib]
+name = "wayoa"
+path = "src/lib.rs"
