@@ -2,9 +2,10 @@
 
 use log::debug;
 use objc2::rc::Retained;
-use objc2::{define_class, msg_send, msg_send_id, AllocAnyThread, DeclaredClass, MainThreadOnly};
+use objc2::{define_class, msg_send, MainThreadOnly};
 use objc2_app_kit::NSView;
-use objc2_foundation::{CGRect, CGSize, MainThreadMarker, NSObjectProtocol};
+use objc2_core_foundation::{CGRect, CGSize};
+use objc2_foundation::{MainThreadMarker, NSObjectProtocol};
 use objc2_quartz_core::CAMetalLayer;
 
 use crate::compositor::SurfaceId;
@@ -27,12 +28,9 @@ impl MetalView {
         frame: CGRect,
     ) -> anyhow::Result<Self> {
         // Create Metal layer first
-        let metal_layer = unsafe { CAMetalLayer::new() };
+        let metal_layer = CAMetalLayer::new();
         metal_layer.setContentsScale(2.0); // For Retina displays
-        metal_layer.setDrawableSize(CGSize::new(
-            frame.size.width * 2.0,
-            frame.size.height * 2.0,
-        ));
+        metal_layer.setDrawableSize(CGSize::new(frame.size.width * 2.0, frame.size.height * 2.0));
 
         let view = WayoaView::new(mtm, surface_id, frame, &metal_layer)?;
 
@@ -66,9 +64,7 @@ impl MetalView {
 
     /// Set the view frame
     pub fn set_frame(&self, frame: CGRect) {
-        unsafe {
-            self.view.setFrame(frame);
-        }
+        self.view.setFrame(frame);
     }
 
     /// Get the view frame
@@ -92,13 +88,8 @@ impl MetalView {
 
 /// View ivars - stores the surface ID for callback identification
 struct WayoaViewIvars {
+    #[allow(dead_code)]
     surface_id_value: u64,
-}
-
-impl WayoaViewIvars {
-    fn surface_id(&self) -> SurfaceId {
-        SurfaceId(self.surface_id_value)
-    }
 }
 
 define_class!(
@@ -109,41 +100,7 @@ define_class!(
     struct WayoaView;
 
     unsafe impl NSObjectProtocol for WayoaView {}
-
-    // Make this view layer-backed and return our Metal layer
-    unsafe impl WayoaView {
-        #[unsafe(method(wantsLayer))]
-        fn wants_layer(&self) -> bool {
-            true
-        }
-
-        #[unsafe(method(wantsUpdateLayer))]
-        fn wants_update_layer(&self) -> bool {
-            true
-        }
-
-        #[unsafe(method(isOpaque))]
-        fn is_opaque(&self) -> bool {
-            true
-        }
-
-        #[unsafe(method(acceptsFirstResponder))]
-        fn accepts_first_responder(&self) -> bool {
-            true
-        }
-
-        #[unsafe(method(updateLayer))]
-        fn update_layer(&self) {
-            // Called when the view needs to update its layer content
-            // The actual rendering is handled by the Metal renderer
-            debug!("Update layer for surface {:?}", self.ivars().surface_id());
-        }
-    }
 );
-
-impl DeclaredClass for WayoaView {
-    type Ivars = WayoaViewIvars;
-}
 
 impl WayoaView {
     fn new(
@@ -157,7 +114,8 @@ impl WayoaView {
             surface_id_value: surface_id.0,
         });
 
-        let this: Retained<Self> = unsafe { msg_send_id![super(this), initWithFrame: frame] };
+        let this: Option<Retained<Self>> = unsafe { msg_send![super(this), initWithFrame: frame] };
+        let this = this.ok_or_else(|| anyhow::anyhow!("initWithFrame failed"))?;
 
         // Set the layer
         unsafe {

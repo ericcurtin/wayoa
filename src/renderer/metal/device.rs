@@ -20,7 +20,7 @@ impl MetalDevice {
         info!("Creating Metal device");
 
         // Get the system default Metal device
-        let device = unsafe { MTLCreateSystemDefaultDevice() }
+        let device = MTLCreateSystemDefaultDevice()
             .ok_or_else(|| anyhow::anyhow!("Failed to create Metal device"))?;
 
         debug!("Metal device: {:?}", device.name());

@@ -109,7 +109,7 @@ pub fn enumerate_outputs() -> Vec<Output> {
         let screens = NSScreen::screens(mtm);
         for (i, screen) in screens.iter().enumerate() {
             let frame = screen.frame();
-            let visible_frame = screen.visibleFrame();
+            let _visible_frame = screen.visibleFrame();
 
             let mut output = Output::new(format!("screen-{}", i));
             output.make = "Apple".to_string();

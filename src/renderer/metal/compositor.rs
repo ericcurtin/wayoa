@@ -1,11 +1,13 @@
 //! Surface composition with Metal
 
+use std::ptr::NonNull;
+
 use log::debug;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
-    MTLCommandBuffer, MTLLoadAction, MTLRenderCommandEncoder, MTLRenderPassDescriptor,
-    MTLStoreAction, MTLTexture,
+    MTLCommandBuffer, MTLCommandEncoder, MTLDrawable, MTLLoadAction, MTLRenderCommandEncoder,
+    MTLRenderPassDescriptor, MTLStoreAction,
 };
 use objc2_quartz_core::CAMetalDrawable;
 
@@ -59,6 +61,7 @@ impl MetalCompositor {
     }
 
     /// Render a surface to the current render pass
+    #[allow(clippy::too_many_arguments)]
     pub fn render_surface(
         &self,
         encoder: &ProtocolObject<dyn MTLRenderCommandEncoder>,
@@ -84,20 +87,26 @@ impl MetalCompositor {
         encoder.setRenderPipelineState(pipeline.state());
 
         // Create vertex data
-        let vertices =
-            RenderPipeline::create_quad_vertices(x, y, width, height, viewport_width, viewport_height);
+        let vertices = RenderPipeline::create_quad_vertices(
+            x,
+            y,
+            width,
+            height,
+            viewport_width,
+            viewport_height,
+        );
 
         // Set vertex buffer
+        let bytes_ptr = NonNull::new(vertices.as_ptr() as *mut std::ffi::c_void)
+            .expect("vertices pointer should not be null");
         unsafe {
-            encoder.setVertexBytes_length_atIndex(
-                vertices.as_ptr() as *const _,
-                std::mem::size_of_val(&vertices),
-                0,
-            );
+            encoder.setVertexBytes_length_atIndex(bytes_ptr, std::mem::size_of_val(&vertices), 0);
         }
 
         // Set texture
-        encoder.setFragmentTexture_atIndex(Some(texture), 0);
+        unsafe {
+            encoder.setFragmentTexture_atIndex(Some(texture), 0);
+        }
 
         // Draw
         unsafe {
@@ -117,11 +126,15 @@ impl MetalCompositor {
         drawable: &ProtocolObject<dyn CAMetalDrawable>,
     ) {
         encoder.endEncoding();
-        command_buffer.presentDrawable(drawable);
+        // Cast CAMetalDrawable to MTLDrawable (CAMetalDrawable conforms to MTLDrawable)
+        let mtl_drawable: &ProtocolObject<dyn MTLDrawable> =
+            unsafe { &*(drawable as *const _ as *const ProtocolObject<dyn MTLDrawable>) };
+        command_buffer.presentDrawable(mtl_drawable);
         command_buffer.commit();
     }
 
     /// Composite all surfaces for a window
+    #[allow(clippy::too_many_arguments)]
     pub fn composite_window(
         &self,
         device: &MetalDevice,

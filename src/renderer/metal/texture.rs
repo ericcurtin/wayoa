@@ -1,11 +1,12 @@
 //! Metal texture management
 
 use std::collections::HashMap;
+use std::ptr::NonNull;
 
 use log::debug;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2_metal::{MTLPixelFormat, MTLTexture, MTLTextureDescriptor, MTLTextureUsage};
+use objc2_metal::{MTLDevice, MTLPixelFormat, MTLTexture, MTLTextureDescriptor, MTLTextureUsage};
 
 use crate::compositor::SurfaceId;
 use crate::protocol::shm::ShmFormat;
@@ -35,6 +36,7 @@ impl TextureManager {
     }
 
     /// Create or update a texture from pixel data
+    #[allow(clippy::too_many_arguments)]
     pub fn upload_texture(
         &mut self,
         device: &MetalDevice,
@@ -54,8 +56,10 @@ impl TextureManager {
         let texture = if needs_new_texture {
             // Create new texture
             let descriptor = MTLTextureDescriptor::new();
-            descriptor.setWidth(width as usize);
-            descriptor.setHeight(height as usize);
+            unsafe {
+                descriptor.setWidth(width as usize);
+                descriptor.setHeight(height as usize);
+            }
             descriptor.setPixelFormat(Self::format_to_metal(format));
             descriptor.setUsage(MTLTextureUsage::ShaderRead);
 
@@ -84,11 +88,14 @@ impl TextureManager {
             },
         };
 
+        // Upload pixel data
+        let bytes_ptr = NonNull::new(data.as_ptr() as *mut std::ffi::c_void)
+            .expect("data pointer should not be null");
         unsafe {
             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                 region,
                 0,
-                data.as_ptr() as *const _,
+                bytes_ptr,
                 stride as usize,
             );
         }

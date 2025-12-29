@@ -298,9 +298,7 @@ mod tests {
         assert!(handler.get_pool(pool_id).is_some());
 
         // Create buffer
-        let buffer_id = handler
-            .create_buffer(pool_id, 0, 100, 100, 400, 0)
-            .unwrap();
+        let buffer_id = handler.create_buffer(pool_id, 0, 100, 100, 400, 0).unwrap();
         assert!(handler.get_buffer(buffer_id).is_some());
     }
 }
