@@ -49,7 +49,7 @@ impl WlOutputHandler {
 
     /// Send output scale event
     pub fn send_scale(&self, output: &Output) -> i32 {
-        output.scale.round() as i32
+        output.scale
     }
 
     /// Send output name event (wl_output version 4+)
@@ -118,7 +118,7 @@ pub fn enumerate_outputs() -> Vec<Output> {
             output.y = frame.origin.y as i32;
 
             // Get backing scale factor for Retina displays
-            output.scale = screen.backingScaleFactor();
+            output.scale = screen.backingScaleFactor().round() as i32;
 
             // Add current mode
             output.add_mode(OutputMode {
@@ -162,7 +162,7 @@ mod tests {
         let mut output = Output::new("test".to_string());
         output.make = "Test".to_string();
         output.model = "Monitor".to_string();
-        output.scale = 2.0;
+        output.scale = 2;
 
         let geometry = handler.send_geometry(&output);
         assert_eq!(geometry.make, "Test");

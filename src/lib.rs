@@ -25,3 +25,4 @@ pub mod compositor;
 pub mod input;
 pub mod protocol;
 pub mod renderer;
+pub mod server;

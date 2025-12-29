@@ -115,7 +115,7 @@ pub struct Output {
     /// Current mode index
     pub current_mode: Option<usize>,
     /// Scale factor
-    pub scale: f64,
+    pub scale: i32,
 }
 
 impl Output {
@@ -135,7 +135,7 @@ impl Output {
             subpixel: Subpixel::Unknown,
             modes: Vec::new(),
             current_mode: None,
-            scale: 1.0,
+            scale: 1,
         }
     }
 
@@ -179,6 +179,25 @@ impl OutputManager {
             outputs: HashMap::new(),
             primary: None,
         }
+    }
+
+    /// Create and add a new output with basic info
+    pub fn create_output(&mut self, name: String, make: String, model: String) -> OutputId {
+        let mut output = Output::new(name);
+        output.make = make;
+        output.model = model;
+        output.physical_width = 527; // ~24" at 1920x1080
+        output.physical_height = 296;
+        output.scale = 1;
+        // Add a default 1920x1080@60Hz mode
+        output.add_mode(OutputMode {
+            width: 1920,
+            height: 1080,
+            refresh: 60000,
+            current: true,
+            preferred: true,
+        });
+        self.add(output)
     }
 
     /// Add an output

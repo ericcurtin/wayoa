@@ -1,6 +1,10 @@
 //! NSApplication delegate and event loop integration
 
-use log::{debug, info};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
+
+use log::{debug, error, info};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, MainThreadOnly};
@@ -9,7 +13,7 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol, NSString};
 
-use crate::compositor::CompositorState;
+use crate::server::{ServerState, WaylandServer};
 
 /// Wayoa application wrapper
 pub struct WayoaApp {
@@ -17,8 +21,10 @@ pub struct WayoaApp {
     mtm: MainThreadMarker,
     /// NSApplication instance
     app: Retained<NSApplication>,
-    /// Compositor state
-    _state: CompositorState,
+    /// Wayland server
+    server: RefCell<WaylandServer>,
+    /// Server state
+    state: Rc<RefCell<ServerState>>,
 }
 
 impl WayoaApp {
@@ -45,14 +51,35 @@ impl WayoaApp {
         // Set up the menu bar
         Self::setup_menu_bar(mtm, &app);
 
-        let state = CompositorState::new();
+        // Create Wayland server
+        let mut server = WaylandServer::new()?;
+
+        // Set WAYLAND_DISPLAY environment variable
+        let socket_name = server.socket_name().to_string();
+        std::env::set_var("WAYLAND_DISPLAY", &socket_name);
+        info!("WAYLAND_DISPLAY={}", socket_name);
+
+        // Register protocol globals
+        server.register_globals();
+
+        // Create server state
+        let mut state = ServerState::new();
+        state.set_main_thread_marker(mtm);
+
+        // Create a default output
+        let _output_id = state.compositor.outputs.create_output(
+            "default".to_string(),
+            "Wayoa".to_string(),
+            "Virtual Display".to_string(),
+        );
 
         debug!("Wayoa application initialized");
 
         Ok(Self {
             mtm,
             app,
-            _state: state,
+            server: RefCell::new(server),
+            state: Rc::new(RefCell::new(state)),
         })
     }
 
@@ -72,7 +99,7 @@ impl WayoaApp {
             let quit_item = NSMenuItem::initWithTitle_action_keyEquivalent(
                 mtm.alloc(),
                 &quit_title,
-                None,
+                Some(objc2::sel!(terminate:)),
                 &quit_key,
             );
             app_menu.addItem(&quit_item);
@@ -87,13 +114,50 @@ impl WayoaApp {
     /// Run the application event loop
     pub fn run(&self) {
         info!("Starting Wayoa event loop");
+        info!(
+            "Wayland clients can connect to: {}",
+            self.server.borrow().socket_name()
+        );
 
         // Activate the application
         #[allow(deprecated)]
         self.app.activateIgnoringOtherApps(true);
 
-        // Run the event loop
-        self.app.run();
+        // We'll use a manual run loop to integrate Wayland dispatch
+        // This is more portable than NSTimer for this use case
+        loop {
+            // Process pending NSApplication events with a small timeout
+            let event = self.app.nextEventMatchingMask_untilDate_inMode_dequeue(
+                objc2_app_kit::NSEventMask::Any,
+                None, // Don't wait for events
+                objc2_foundation::ns_string!("kCFRunLoopDefaultMode"),
+                true,
+            );
+
+            if let Some(event) = event {
+                self.app.sendEvent(&event);
+            }
+
+            // Dispatch Wayland events
+            if let Err(e) = self.dispatch_wayland() {
+                error!("Wayland dispatch error: {}", e);
+            }
+
+            // Small sleep to avoid busy-waiting when idle
+            std::thread::sleep(Duration::from_millis(1));
+
+            // Check if we should stop
+            if !self.app.isRunning() {
+                break;
+            }
+        }
+    }
+
+    /// Dispatch pending Wayland events
+    fn dispatch_wayland(&self) -> anyhow::Result<()> {
+        let mut server = self.server.borrow_mut();
+        let mut state = self.state.borrow_mut();
+        server.dispatch(&mut state)
     }
 
     /// Stop the application
