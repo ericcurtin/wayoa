@@ -74,6 +74,13 @@ rustix = { version = "1", features = ["fs", "mm"] }
 
 [dev-dependencies]
 tempfile = "3"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
+memmap2 = "0.9"
+
+[[example]]
+name = "test_client"
+path = "examples/test_client.rs"
 
 [features]
 default = []

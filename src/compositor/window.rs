@@ -58,9 +58,13 @@ pub struct Window {
     /// Associated surface
     pub surface_id: SurfaceId,
     /// Window title
-    pub title: String,
+    pub title: Option<String>,
     /// Application ID (app_id)
-    pub app_id: String,
+    pub app_id: Option<String>,
+    /// Is maximized
+    pub maximized: bool,
+    /// Is fullscreen
+    pub fullscreen: bool,
     /// Window geometry
     pub geometry: WindowGeometry,
     /// Minimum size (0 = no minimum)
@@ -84,8 +88,10 @@ impl Window {
         Self {
             id: WindowId::new(),
             surface_id,
-            title: String::new(),
-            app_id: String::new(),
+            title: None,
+            app_id: None,
+            maximized: false,
+            fullscreen: false,
             geometry: WindowGeometry::default(),
             min_size: (0, 0),
             max_size: (0, 0),
@@ -97,12 +103,12 @@ impl Window {
 
     /// Set the window title
     pub fn set_title(&mut self, title: String) {
-        self.title = title;
+        self.title = Some(title);
     }
 
     /// Set the application ID
     pub fn set_app_id(&mut self, app_id: String) {
-        self.app_id = app_id;
+        self.app_id = Some(app_id);
     }
 
     /// Set window geometry
@@ -205,6 +211,11 @@ impl WindowManager {
             .and_then(move |id| self.windows.get_mut(&id))
     }
 
+    /// Get the window ID for a surface
+    pub fn window_for_surface(&self, surface_id: SurfaceId) -> Option<WindowId> {
+        self.surface_to_window.get(&surface_id).copied()
+    }
+
     /// Remove a window
     pub fn remove(&mut self, id: WindowId) -> Option<Window> {
         if let Some(window) = self.windows.remove(&id) {
@@ -282,7 +293,7 @@ mod tests {
         let surface_id = SurfaceId(1);
         let window = Window::new(surface_id);
         assert_eq!(window.surface_id, surface_id);
-        assert!(window.title.is_empty());
+        assert!(window.title.is_none());
     }
 
     #[test]
