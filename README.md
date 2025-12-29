@@ -60,78 +60,6 @@ Wayoa is a full-featured Wayland compositor where each Wayland toplevel surface 
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-## Project Structure
-
-```
-wayoa/
-├── Cargo.toml
-├── src/
-│   ├── main.rs                 # Entry point, NSApplication setup
-│   ├── lib.rs                  # Public API
-│   ├── compositor/
-│   │   ├── mod.rs
-│   │   ├── state.rs            # Global compositor state
-│   │   ├── surface.rs          # Surface management
-│   │   ├── window.rs           # Window/toplevel management
-│   │   └── output.rs           # Output/display management
-│   ├── protocol/
-│   │   ├── mod.rs
-│   │   ├── compositor.rs       # wl_compositor, wl_surface
-│   │   ├── shell.rs            # xdg_shell implementation
-│   │   ├── seat.rs             # wl_seat, keyboard, pointer
-│   │   ├── shm.rs              # wl_shm, buffer management
-│   │   ├── output.rs           # wl_output
-│   │   ├── data_device.rs      # Clipboard/DnD
-│   │   ├── layer_shell.rs      # wlr-layer-shell
-│   │   └── screencopy.rs       # wlr-screencopy
-│   ├── backend/
-│   │   ├── mod.rs
-│   │   ├── cocoa/
-│   │   │   ├── mod.rs
-│   │   │   ├── app.rs          # NSApplication delegate
-│   │   │   ├── window.rs       # NSWindow wrapper
-│   │   │   ├── view.rs         # NSView with Metal layer
-│   │   │   └── input.rs        # NSEvent handling
-│   │   └── event_loop.rs       # Integration with calloop
-│   ├── renderer/
-│   │   ├── mod.rs
-│   │   ├── metal/
-│   │   │   ├── mod.rs
-│   │   │   ├── device.rs       # MTLDevice setup
-│   │   │   ├── pipeline.rs     # Render pipelines
-│   │   │   ├── texture.rs      # Buffer → MTLTexture
-│   │   │   └── compositor.rs   # Surface composition
-│   │   └── shaders/
-│   │       ├── blit.metal      # Basic texture blit
-│   │       └── composite.metal # Alpha blending
-│   └── input/
-│       ├── mod.rs
-│       ├── keyboard.rs         # Keymap, XKB integration
-│       ├── pointer.rs          # Mouse/trackpad
-│       └── seat.rs             # Input device coordination
-└── protocols/                  # Wayland protocol XML (reference)
-```
-
-## Building
-
-### Requirements
-
-- macOS 10.15 or later
-- Rust 1.70 or later
-- Xcode Command Line Tools (for Metal compiler)
-
-### Build
-
-```bash
-cargo build --release
-```
-
-### Run
-
-```bash
-cargo run --release
-```
-
 ## Usage
 
 When running Wayoa, it creates a Wayland socket that clients can connect to:
@@ -144,22 +72,3 @@ export WAYLAND_DISPLAY=wayland-0
 ./my-wayland-app
 ```
 
-## Development Status
-
-This project is in early development. Current status:
-
-- [x] Project structure and build system
-- [x] Compositor core (surfaces, windows, outputs)
-- [x] Protocol handlers (compositor, shell, seat, shm, etc.)
-- [x] Cocoa backend (NSApplication, NSWindow, NSView)
-- [x] Metal renderer foundation
-- [x] Input handling and translation
-- [ ] Wayland server socket integration
-- [ ] Full protocol event dispatch
-- [ ] Clipboard integration with macOS pasteboard
-- [ ] Cursor rendering
-- [ ] Multi-monitor support
-
-## License
-
-Apache License 2.0
