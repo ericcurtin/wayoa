@@ -39,6 +39,8 @@ pub struct BufferInfo {
     pub format: u32,
     /// Offset into the shared memory pool
     pub offset: u32,
+    /// SHM buffer ID (for accessing pixel data)
+    pub shm_buffer_id: Option<u64>,
 }
 
 /// Pending state for a surface (not yet committed)
