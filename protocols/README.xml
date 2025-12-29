@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  Wayland Protocol XML Files
+  
+  This directory contains protocol definition files for Wayoa:
+  
+  - wayland.xml: Core Wayland protocol
+  - xdg-shell.xml: XDG shell protocol for window management
+  - wlr-layer-shell.xml: wlroots layer shell protocol
+  - wlr-screencopy.xml: wlroots screencopy protocol
+  
+  These XML files are used by wayland-scanner to generate protocol bindings.
+  The actual XML files should be copied from the Wayland protocols repository:
+  
+  - https://gitlab.freedesktop.org/wayland/wayland/-/tree/main/protocol
+  - https://gitlab.freedesktop.org/wayland/wayland-protocols
+  - https://gitlab.freedesktop.org/wlroots/wlr-protocols
+  
+  For development, wayland-protocols and wayland-protocols-wlr crates provide
+  pre-generated bindings, so these XML files are primarily for reference.
+-->
+<protocols>
+  <protocol name="wayland">
+    <description>Core Wayland protocol</description>
+  </protocol>
+  <protocol name="xdg-shell">
+    <description>XDG shell protocol for window management</description>
+  </protocol>
+  <protocol name="wlr-layer-shell">
+    <description>Layer shell protocol for panels and overlays</description>
+  </protocol>
+  <protocol name="wlr-screencopy">
+    <description>Screen capture protocol</description>
+  </protocol>
+</protocols>
