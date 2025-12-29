@@ -4,9 +4,7 @@ use log::debug;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, AllocAnyThread, DeclaredClass, MainThreadOnly};
-use objc2_app_kit::{
-    NSBackingStoreType, NSWindow, NSWindowDelegate, NSWindowStyleMask,
-};
+use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowDelegate, NSWindowStyleMask};
 use objc2_foundation::{
     CGPoint, CGRect, CGSize, MainThreadMarker, NSNotification, NSObject, NSObjectProtocol,
     NSString,
@@ -38,6 +36,7 @@ impl NativeWindowHandle {
 /// Wayoa native window
 pub struct WayoaWindow {
     /// Main thread marker
+    #[allow(dead_code)]
     mtm: MainThreadMarker,
     /// The underlying NSWindow
     window: Retained<NSWindow>,
@@ -203,9 +202,17 @@ impl WayoaWindow {
     }
 }
 
-/// Window delegate ivars
+/// Window delegate ivars - stores the window ID for callback identification
+/// Note: In objc2, ivars are initialized via DeclaredClass::Ivars
 struct WayoaWindowDelegateIvars {
-    window_id: WindowId,
+    // We store the raw u64 value since WindowId is Copy
+    window_id_value: u64,
+}
+
+impl WayoaWindowDelegateIvars {
+    fn window_id(&self) -> WindowId {
+        WindowId(self.window_id_value)
+    }
 }
 
 define_class!(
@@ -220,51 +227,51 @@ define_class!(
     unsafe impl NSWindowDelegate for WayoaWindowDelegate {
         #[unsafe(method(windowDidBecomeKey:))]
         fn window_did_become_key(&self, _notification: &NSNotification) {
-            debug!("Window {:?} became key", self.ivars().window_id);
+            debug!("Window {:?} became key", self.ivars().window_id());
             // TODO: Send keyboard enter event to Wayland client
         }
 
         #[unsafe(method(windowDidResignKey:))]
         fn window_did_resign_key(&self, _notification: &NSNotification) {
-            debug!("Window {:?} resigned key", self.ivars().window_id);
+            debug!("Window {:?} resigned key", self.ivars().window_id());
             // TODO: Send keyboard leave event to Wayland client
         }
 
         #[unsafe(method(windowWillClose:))]
         fn window_will_close(&self, _notification: &NSNotification) {
-            debug!("Window {:?} will close", self.ivars().window_id);
+            debug!("Window {:?} will close", self.ivars().window_id());
             // TODO: Send close request to Wayland client
         }
 
         #[unsafe(method(windowDidResize:))]
         fn window_did_resize(&self, _notification: &NSNotification) {
-            debug!("Window {:?} did resize", self.ivars().window_id);
+            debug!("Window {:?} did resize", self.ivars().window_id());
             // TODO: Send configure event to Wayland client
         }
 
         #[unsafe(method(windowDidMove:))]
         fn window_did_move(&self, _notification: &NSNotification) {
-            debug!("Window {:?} did move", self.ivars().window_id);
+            debug!("Window {:?} did move", self.ivars().window_id());
         }
 
         #[unsafe(method(windowDidMiniaturize:))]
         fn window_did_miniaturize(&self, _notification: &NSNotification) {
-            debug!("Window {:?} did miniaturize", self.ivars().window_id);
+            debug!("Window {:?} did miniaturize", self.ivars().window_id());
         }
 
         #[unsafe(method(windowDidDeminiaturize:))]
         fn window_did_deminiaturize(&self, _notification: &NSNotification) {
-            debug!("Window {:?} did deminiaturize", self.ivars().window_id);
+            debug!("Window {:?} did deminiaturize", self.ivars().window_id());
         }
 
         #[unsafe(method(windowDidEnterFullScreen:))]
         fn window_did_enter_full_screen(&self, _notification: &NSNotification) {
-            debug!("Window {:?} entered full screen", self.ivars().window_id);
+            debug!("Window {:?} entered full screen", self.ivars().window_id());
         }
 
         #[unsafe(method(windowDidExitFullScreen:))]
         fn window_did_exit_full_screen(&self, _notification: &NSNotification) {
-            debug!("Window {:?} exited full screen", self.ivars().window_id);
+            debug!("Window {:?} exited full screen", self.ivars().window_id());
         }
     }
 );
@@ -275,25 +282,10 @@ impl DeclaredClass for WayoaWindowDelegate {
 
 impl WayoaWindowDelegate {
     fn new(mtm: MainThreadMarker, window_id: WindowId) -> Retained<Self> {
-        let this = mtm.alloc();
-        let this: Retained<Self> = unsafe { msg_send![super(this), init] };
-        this.ivars().window_id.set(window_id.0);
-        this
-    }
-}
-
-// WindowId needs interior mutability for initialization in the delegate
-impl WayoaWindowDelegateIvars {
-    fn new(window_id: WindowId) -> Self {
-        Self { window_id }
-    }
-}
-
-// Since we can't use Cell in ivars easily, we'll use a workaround
-impl std::ops::Deref for WayoaWindowDelegateIvars {
-    type Target = WindowId;
-    fn deref(&self) -> &Self::Target {
-        &self.window_id
+        let this = mtm.alloc::<Self>().set_ivars(WayoaWindowDelegateIvars {
+            window_id_value: window_id.0,
+        });
+        unsafe { msg_send![super(this), init] }
     }
 }
 

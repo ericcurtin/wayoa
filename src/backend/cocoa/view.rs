@@ -2,10 +2,9 @@
 
 use log::debug;
 use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
 use objc2::{define_class, msg_send, msg_send_id, AllocAnyThread, DeclaredClass, MainThreadOnly};
 use objc2_app_kit::NSView;
-use objc2_foundation::{CGRect, CGSize, MainThreadMarker, NSObject, NSObjectProtocol};
+use objc2_foundation::{CGRect, CGSize, MainThreadMarker, NSObjectProtocol};
 use objc2_quartz_core::CAMetalLayer;
 
 use crate::compositor::SurfaceId;
@@ -16,19 +15,37 @@ pub struct MetalView {
     view: Retained<WayoaView>,
     /// Associated surface ID
     surface_id: SurfaceId,
+    /// Metal layer (stored separately for easy access)
+    metal_layer: Retained<CAMetalLayer>,
 }
 
 impl MetalView {
     /// Create a new Metal view
-    pub fn new(mtm: MainThreadMarker, surface_id: SurfaceId, frame: CGRect) -> anyhow::Result<Self> {
-        let view = WayoaView::new(mtm, surface_id, frame)?;
+    pub fn new(
+        mtm: MainThreadMarker,
+        surface_id: SurfaceId,
+        frame: CGRect,
+    ) -> anyhow::Result<Self> {
+        // Create Metal layer first
+        let metal_layer = unsafe { CAMetalLayer::new() };
+        metal_layer.setContentsScale(2.0); // For Retina displays
+        metal_layer.setDrawableSize(CGSize::new(
+            frame.size.width * 2.0,
+            frame.size.height * 2.0,
+        ));
+
+        let view = WayoaView::new(mtm, surface_id, frame, &metal_layer)?;
 
         debug!(
             "Created Metal view for surface {:?}, size {}x{}",
             surface_id, frame.size.width, frame.size.height
         );
 
-        Ok(Self { view, surface_id })
+        Ok(Self {
+            view,
+            surface_id,
+            metal_layer,
+        })
     }
 
     /// Get the underlying NSView
@@ -43,8 +60,8 @@ impl MetalView {
     }
 
     /// Get the Metal layer
-    pub fn metal_layer(&self) -> Option<Retained<CAMetalLayer>> {
-        self.view.metal_layer()
+    pub fn metal_layer(&self) -> &CAMetalLayer {
+        &self.metal_layer
     }
 
     /// Set the view frame
@@ -61,10 +78,8 @@ impl MetalView {
 
     /// Set the drawable size for the Metal layer
     pub fn set_drawable_size(&self, width: u32, height: u32) {
-        if let Some(layer) = self.metal_layer() {
-            let size = CGSize::new(width as f64, height as f64);
-            layer.setDrawableSize(size);
-        }
+        let size = CGSize::new(width as f64, height as f64);
+        self.metal_layer.setDrawableSize(size);
     }
 
     /// Request a redraw
@@ -75,10 +90,15 @@ impl MetalView {
     }
 }
 
-/// View ivars
+/// View ivars - stores the surface ID for callback identification
 struct WayoaViewIvars {
-    surface_id: SurfaceId,
-    metal_layer: Option<Retained<CAMetalLayer>>,
+    surface_id_value: u64,
+}
+
+impl WayoaViewIvars {
+    fn surface_id(&self) -> SurfaceId {
+        SurfaceId(self.surface_id_value)
+    }
 }
 
 define_class!(
@@ -116,7 +136,7 @@ define_class!(
         fn update_layer(&self) {
             // Called when the view needs to update its layer content
             // The actual rendering is handled by the Metal renderer
-            debug!("Update layer for surface {:?}", self.ivars().surface_id);
+            debug!("Update layer for surface {:?}", self.ivars().surface_id());
         }
     }
 );
@@ -126,52 +146,26 @@ impl DeclaredClass for WayoaView {
 }
 
 impl WayoaView {
-    fn new(mtm: MainThreadMarker, surface_id: SurfaceId, frame: CGRect) -> anyhow::Result<Retained<Self>> {
-        let this = mtm.alloc();
+    fn new(
+        mtm: MainThreadMarker,
+        surface_id: SurfaceId,
+        frame: CGRect,
+        metal_layer: &CAMetalLayer,
+    ) -> anyhow::Result<Retained<Self>> {
+        // Initialize the view with ivars
+        let this = mtm.alloc::<Self>().set_ivars(WayoaViewIvars {
+            surface_id_value: surface_id.0,
+        });
 
-        // Create Metal layer
-        let metal_layer = unsafe { CAMetalLayer::new() };
-        metal_layer.setContentsScale(2.0); // For Retina displays
-        metal_layer.setDrawableSize(CGSize::new(
-            frame.size.width * 2.0,
-            frame.size.height * 2.0,
-        ));
-
-        // Initialize the view
-        let this: Retained<Self> = unsafe {
-            let this: Retained<Self> = msg_send_id![super(this), initWithFrame: frame];
-            this
-        };
-
-        // Set up ivars
-        *this.ivars().surface_id.get_mut() = surface_id;
-        *this.ivars().metal_layer.get_mut() = Some(metal_layer.clone());
+        let this: Retained<Self> = unsafe { msg_send_id![super(this), initWithFrame: frame] };
 
         // Set the layer
         unsafe {
-            let _: () = msg_send![&*this, setLayer: &*metal_layer];
+            let _: () = msg_send![&*this, setLayer: metal_layer];
             let _: () = msg_send![&*this, setWantsLayer: true];
         }
 
         Ok(this)
-    }
-
-    fn metal_layer(&self) -> Option<Retained<CAMetalLayer>> {
-        self.ivars().metal_layer.clone()
-    }
-}
-
-// Interior mutability helpers for ivars
-impl WayoaViewIvars {
-    fn get_mut(&mut self) -> &mut Self {
-        self
-    }
-}
-
-impl std::ops::Deref for WayoaViewIvars {
-    type Target = SurfaceId;
-    fn deref(&self) -> &Self::Target {
-        &self.surface_id
     }
 }
 

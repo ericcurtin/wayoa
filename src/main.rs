@@ -7,7 +7,7 @@ use log::error;
 
 #[cfg(target_os = "macos")]
 mod macos_main {
-    use super::*;
+    use log::info;
     use wayoa::backend::cocoa::app::WayoaApp;
 
     pub fn run() -> anyhow::Result<()> {
