@@ -74,7 +74,11 @@ impl ShmFormat {
 pub struct ShmPool {
     /// Unique identifier
     pub id: ShmPoolId,
-    /// File descriptor for the shared memory
+    /// File for the shared memory (keeps fd alive)
+    #[cfg(target_os = "macos")]
+    pub file: Option<std::fs::File>,
+    /// Raw fd for non-macos
+    #[cfg(not(target_os = "macos"))]
     pub fd: RawFd,
     /// Size of the pool in bytes
     pub size: usize,
@@ -87,6 +91,23 @@ pub struct ShmPool {
 
 impl ShmPool {
     /// Create a new shm pool
+    #[cfg(target_os = "macos")]
+    pub fn new(fd: RawFd, size: usize) -> Self {
+        use std::os::unix::io::FromRawFd;
+        // Duplicate the fd by creating a File and using try_clone
+        let file = unsafe { std::fs::File::from_raw_fd(fd) };
+        let cloned = file.try_clone().ok();
+        // Forget the original to prevent closing it
+        std::mem::forget(file);
+        Self {
+            id: ShmPoolId::new(),
+            file: cloned,
+            size,
+            data: None,
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
     pub fn new(fd: RawFd, size: usize) -> Self {
         Self {
             id: ShmPoolId::new(),
@@ -249,6 +270,48 @@ impl WlShmHandler {
     pub fn get_pool(&self, id: ShmPoolId) -> Option<&ShmPool> {
         self.pools.get(&id)
     }
+
+    /// Get a mutable pool by ID
+    pub fn get_pool_mut(&mut self, id: ShmPoolId) -> Option<&mut ShmPool> {
+        self.pools.get_mut(&id)
+    }
+
+    /// Read buffer pixel data
+    /// Returns a copy of the buffer contents
+    #[cfg(target_os = "macos")]
+    pub fn read_buffer_data(&mut self, buffer_id: ShmBufferId) -> Result<Vec<u8>, ShmError> {
+        let buffer = self.buffers.get(&buffer_id).ok_or(ShmError::InvalidPool)?;
+        let pool_id = buffer.pool_id;
+        let offset = buffer.offset as usize;
+        let size = buffer.data_size();
+
+        let pool = self.pools.get_mut(&pool_id).ok_or(ShmError::InvalidPool)?;
+
+        // Mmap the pool if not already done
+        if pool.data.is_none() {
+            let file = pool.file.as_ref().ok_or(ShmError::InvalidPool)?;
+            match unsafe { memmap2::Mmap::map(file) } {
+                Ok(mmap) => {
+                    pool.data = Some(mmap);
+                }
+                Err(e) => {
+                    debug!("Failed to mmap pool: {}", e);
+                    return Err(ShmError::InvalidPool);
+                }
+            }
+        }
+
+        // Read the data
+        if let Some(ref mmap) = pool.data {
+            if offset + size <= mmap.len() {
+                Ok(mmap[offset..offset + size].to_vec())
+            } else {
+                Err(ShmError::BufferTooLarge)
+            }
+        } else {
+            Err(ShmError::InvalidPool)
+        }
+    }
 }
 
 impl Default for WlShmHandler {
@@ -289,12 +352,18 @@ mod tests {
 
     #[test]
     fn test_shm_handler() {
+        use std::os::unix::io::AsRawFd;
+
         let mut handler = WlShmHandler::new();
         let formats = handler.formats();
         assert!(formats.contains(&ShmFormat::Argb8888));
 
-        // Create pool with a fake fd (-1 for testing)
-        let pool_id = handler.create_pool(-1, 40000);
+        // Create a real temp file for testing
+        let temp_file = tempfile::tempfile().unwrap();
+        temp_file.set_len(40000).unwrap();
+        let fd = temp_file.as_raw_fd();
+
+        let pool_id = handler.create_pool(fd, 40000);
         assert!(handler.get_pool(pool_id).is_some());
 
         // Create buffer

@@ -3,8 +3,10 @@
 use log::debug;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2::{define_class, msg_send, DeclaredClass, MainThreadOnly};
-use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowDelegate, NSWindowStyleMask};
+use objc2::{define_class, msg_send, DefinedClass, MainThreadOnly};
+use objc2_app_kit::{
+    NSBackingStoreType, NSImageView, NSWindow, NSWindowDelegate, NSWindowStyleMask,
+};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol, NSString};
 
@@ -34,12 +36,13 @@ impl NativeWindowHandle {
 /// Wayoa native window
 pub struct WayoaWindow {
     /// Main thread marker
-    #[allow(dead_code)]
     mtm: MainThreadMarker,
     /// The underlying NSWindow
     window: Retained<NSWindow>,
     /// Window ID
     window_id: WindowId,
+    /// Image view for rendering buffer content
+    image_view: Option<Retained<NSImageView>>,
 }
 
 impl WayoaWindow {
@@ -84,6 +87,18 @@ impl WayoaWindow {
             ProtocolObject::from_ref(&*delegate);
         window.setDelegate(Some(delegate_obj));
 
+        // Create an NSImageView for the content
+        let content_frame = CGRect::new(
+            CGPoint::new(0.0, 0.0),
+            CGSize::new(width as f64, height as f64),
+        );
+        let image_view = unsafe {
+            let view: Retained<NSImageView> =
+                msg_send![mtm.alloc::<NSImageView>(), initWithFrame: content_frame];
+            view
+        };
+        window.setContentView(Some(&image_view));
+
         debug!(
             "Created native window {:?}, {}x{}, title: {}",
             window_id, width, height, title
@@ -93,6 +108,7 @@ impl WayoaWindow {
             mtm,
             window,
             window_id,
+            image_view: Some(image_view),
         })
     }
 
@@ -194,6 +210,74 @@ impl WayoaWindow {
     /// Make window key (focused)
     pub fn make_key(&self) {
         self.window.makeKeyWindow();
+    }
+
+    /// Update the window content from buffer data (ARGB8888 format)
+    pub fn update_buffer(&self, data: &[u8], width: u32, height: u32, stride: u32) {
+        use objc2_app_kit::{NSBitmapImageRep, NSImage};
+
+        let Some(image_view) = &self.image_view else {
+            debug!("No image view for window {:?}", self.window_id);
+            return;
+        };
+
+        unsafe {
+            // Create bitmap rep that allocates its own storage (pass NULL for planes)
+            let bitmap_rep: Option<Retained<NSBitmapImageRep>> = msg_send![
+                self.mtm.alloc::<NSBitmapImageRep>(),
+                initWithBitmapDataPlanes: std::ptr::null_mut::<*mut u8>(),
+                pixelsWide: width as isize,
+                pixelsHigh: height as isize,
+                bitsPerSample: 8_isize,
+                samplesPerPixel: 4_isize,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: objc2_app_kit::NSCalibratedRGBColorSpace,
+                bytesPerRow: (width * 4) as isize,
+                bitsPerPixel: 32_isize
+            ];
+
+            if let Some(bitmap_rep) = bitmap_rep {
+                // Get the bitmap's internal buffer and copy data into it
+                let bitmap_data: *mut u8 = msg_send![&bitmap_rep, bitmapData];
+                if !bitmap_data.is_null() {
+                    // Convert BGRA (Wayland) to RGBA (macOS expects) directly into bitmap
+                    for y in 0..height {
+                        for x in 0..width {
+                            let src_offset = (y * stride + x * 4) as usize;
+                            let dst_offset = ((y * width + x) * 4) as usize;
+                            if src_offset + 3 < data.len() {
+                                // BGRA -> RGBA
+                                *bitmap_data.add(dst_offset) = data[src_offset + 2]; // R
+                                *bitmap_data.add(dst_offset + 1) = data[src_offset + 1]; // G
+                                *bitmap_data.add(dst_offset + 2) = data[src_offset]; // B
+                                *bitmap_data.add(dst_offset + 3) = data[src_offset + 3];
+                                // A
+                            }
+                        }
+                    }
+                }
+
+                // Create NSImage and add the bitmap rep
+                let size = CGSize::new(width as f64, height as f64);
+                let image: Retained<NSImage> =
+                    msg_send![self.mtm.alloc::<NSImage>(), initWithSize: size];
+                let _: () = msg_send![&image, addRepresentation: &*bitmap_rep];
+
+                // Set the image on the view
+                image_view.setImage(Some(&image));
+
+                debug!(
+                    "Updated window {:?} buffer {}x{}",
+                    self.window_id, width, height
+                );
+            } else {
+                debug!(
+                    "Failed to create bitmap rep for window {:?}",
+                    self.window_id
+                );
+            }
+        }
     }
 }
 

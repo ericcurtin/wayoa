@@ -64,16 +64,29 @@ impl Dispatch<wl_surface::WlSurface, SurfaceId> for ServerState {
         match request {
             wl_surface::Request::Attach { buffer, x, y } => {
                 debug!("Surface {:?} attach buffer at ({}, {})", surface_id, x, y);
-                if buffer.is_some() {
-                    // Get buffer info from our shm handler if available
-                    // For now, just mark that we have a buffer attached
-                    surface.attach(Some(crate::compositor::surface::BufferInfo {
-                        width: 0, // Will be filled in from shm buffer
-                        height: 0,
-                        stride: 0,
-                        format: 0,
-                        offset: 0,
-                    }));
+                if let Some(wl_buffer) = buffer {
+                    // Get the buffer data from the wl_buffer's user data
+                    if let Some(shm_buffer_id) =
+                        wl_buffer.data::<crate::protocol::shm::ShmBufferId>()
+                    {
+                        // Look up the buffer info
+                        if let Some(shm_buffer) = state.shm.get_buffer(*shm_buffer_id) {
+                            surface.attach(Some(crate::compositor::surface::BufferInfo {
+                                width: shm_buffer.width,
+                                height: shm_buffer.height,
+                                stride: shm_buffer.stride,
+                                format: shm_buffer.format.to_wayland(),
+                                offset: shm_buffer.offset,
+                                shm_buffer_id: Some(shm_buffer_id.0),
+                            }));
+                        } else {
+                            debug!("Buffer {:?} not found in shm handler", shm_buffer_id);
+                            surface.attach(None);
+                        }
+                    } else {
+                        debug!("Buffer has no ShmBufferId user data");
+                        surface.attach(None);
+                    }
                 } else {
                     surface.attach(None);
                 }
@@ -132,15 +145,16 @@ impl Dispatch<wl_surface::WlSurface, SurfaceId> for ServerState {
                         if let Some(window_id) =
                             state.compositor.windows.window_for_surface(*surface_id)
                         {
+                            // Get buffer info for window creation/update
+                            let buffer_info = surface.buffer.clone();
+                            let (width, height) = buffer_info
+                                .as_ref()
+                                .map(|b| (b.width.max(640), b.height.max(480)))
+                                .unwrap_or((640, 480));
+
                             // Create native window if it doesn't exist
                             if !state.native_windows.contains_key(&window_id) {
                                 if let Some(mtm) = state.mtm {
-                                    let (width, height) = surface
-                                        .buffer
-                                        .as_ref()
-                                        .map(|b| (b.width.max(640), b.height.max(480)))
-                                        .unwrap_or((640, 480));
-
                                     match crate::backend::cocoa::window::WayoaWindow::new(
                                         mtm,
                                         window_id,
@@ -155,6 +169,21 @@ impl Dispatch<wl_surface::WlSurface, SurfaceId> for ServerState {
                                         }
                                         Err(e) => {
                                             warn!("Failed to create native window: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Update the window content with buffer data
+                            if let Some(ref buf) = buffer_info {
+                                if let Some(shm_buffer_id) = buf.shm_buffer_id {
+                                    let buffer_id =
+                                        crate::protocol::shm::ShmBufferId(shm_buffer_id);
+                                    if let Ok(data) = state.shm.read_buffer_data(buffer_id) {
+                                        if let Some(window) = state.native_windows.get(&window_id) {
+                                            window.update_buffer(
+                                                &data, buf.width, buf.height, buf.stride,
+                                            );
                                         }
                                     }
                                 }

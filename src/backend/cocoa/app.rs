@@ -25,6 +25,8 @@ pub struct WayoaApp {
     server: RefCell<WaylandServer>,
     /// Server state
     state: Rc<RefCell<ServerState>>,
+    /// Running flag
+    running: RefCell<bool>,
 }
 
 impl WayoaApp {
@@ -80,6 +82,7 @@ impl WayoaApp {
             app,
             server: RefCell::new(server),
             state: Rc::new(RefCell::new(state)),
+            running: RefCell::new(true),
         })
     }
 
@@ -147,7 +150,7 @@ impl WayoaApp {
             std::thread::sleep(Duration::from_millis(1));
 
             // Check if we should stop
-            if !self.app.isRunning() {
+            if !*self.running.borrow() {
                 break;
             }
         }
@@ -162,6 +165,7 @@ impl WayoaApp {
 
     /// Stop the application
     pub fn stop(&self) {
+        *self.running.borrow_mut() = false;
         self.app.stop(None);
     }
 
