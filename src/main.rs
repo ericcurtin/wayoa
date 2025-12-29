@@ -3,8 +3,6 @@
 //! This is the entry point that sets up the NSApplication event loop
 //! and integrates the Wayland server.
 
-use log::error;
-
 #[cfg(target_os = "macos")]
 mod macos_main {
     use log::info;
@@ -22,7 +20,7 @@ mod macos_main {
 
 #[cfg(not(target_os = "macos"))]
 mod stub_main {
-    use super::*;
+    use log::error;
 
     pub fn run() -> anyhow::Result<()> {
         error!("Wayoa only runs on macOS");

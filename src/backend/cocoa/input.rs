@@ -1,7 +1,5 @@
 //! NSEvent handling and translation to Wayland events
 
-use log::debug;
-
 use crate::protocol::seat::{AxisType, ButtonState, KeyState, KeyboardEvent, PointerEvent};
 
 /// Translates macOS NSEvent to Wayland input events
@@ -202,7 +200,6 @@ impl InputTranslator {
     pub fn translate_modifiers(&self, macos_flags: u64) -> (u32, u32, u32, u32) {
         // macOS NSEventModifierFlags to XKB modifier state
         let mut depressed = 0u32;
-        let locked;
         let latched = 0u32;
         let group = 0u32;
 
@@ -223,7 +220,7 @@ impl InputTranslator {
             depressed |= 64; // MOD_LOGO
         }
         // Caps Lock
-        locked = if macos_flags & (1 << 16) != 0 {
+        let locked = if macos_flags & (1 << 16) != 0 {
             2 // MOD_CAPS
         } else {
             0

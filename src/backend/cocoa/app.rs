@@ -3,7 +3,7 @@
 use log::{debug, info};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2::{define_class, msg_send, AllocAnyThread, DeclaredClass, MainThreadOnly, ClassType};
+use objc2::{define_class, msg_send, MainThreadOnly};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSMenu, NSMenuItem,
 };
@@ -39,7 +39,7 @@ impl WayoaApp {
         // Create and set the app delegate
         let delegate = WayoaAppDelegate::new(mtm);
         let delegate_obj: &ProtocolObject<dyn NSApplicationDelegate> =
-            ProtocolObject::from_ref(delegate.as_ref());
+            ProtocolObject::from_ref(&*delegate);
         app.setDelegate(Some(delegate_obj));
 
         // Set up the menu bar
@@ -69,8 +69,12 @@ impl WayoaApp {
             // Quit menu item
             let quit_title = NSString::from_str("Quit Wayoa");
             let quit_key = NSString::from_str("q");
-            let quit_item =
-                NSMenuItem::initWithTitle_action_keyEquivalent(mtm.alloc(), &quit_title, None, &quit_key);
+            let quit_item = NSMenuItem::initWithTitle_action_keyEquivalent(
+                mtm.alloc(),
+                &quit_title,
+                None,
+                &quit_key,
+            );
             app_menu.addItem(&quit_item);
 
             app_menu_item.setSubmenu(Some(&app_menu));
@@ -85,21 +89,16 @@ impl WayoaApp {
         info!("Starting Wayoa event loop");
 
         // Activate the application
-        unsafe {
-            self.app.activateIgnoringOtherApps(true);
-        }
+        #[allow(deprecated)]
+        self.app.activateIgnoringOtherApps(true);
 
         // Run the event loop
-        unsafe {
-            self.app.run();
-        }
+        self.app.run();
     }
 
     /// Stop the application
     pub fn stop(&self) {
-        unsafe {
-            self.app.stop(None);
-        }
+        self.app.stop(None);
     }
 
     /// Get the main thread marker
@@ -144,15 +143,11 @@ define_class!(
     }
 );
 
-impl DeclaredClass for WayoaAppDelegate {
-    type Ivars = WayoaAppDelegateIvars;
-}
-
 impl WayoaAppDelegate {
     fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let this = mtm.alloc();
-        let this: Retained<Self> = unsafe { msg_send![super(this), init] };
-        this
+        let this = mtm.alloc::<Self>().set_ivars(WayoaAppDelegateIvars {});
+        let this: Option<Retained<Self>> = unsafe { msg_send![super(this), init] };
+        this.expect("init failed")
     }
 }
 

@@ -6,7 +6,7 @@ use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTLDevice, MTLFunction, MTLLibrary, MTLPixelFormat, MTLRenderPipelineDescriptor,
-    MTLRenderPipelineState, MTLVertexDescriptor,
+    MTLRenderPipelineState,
 };
 
 use super::MetalDevice;
@@ -38,12 +38,10 @@ impl RenderPipeline {
         let shader_source = include_str!("../shaders/blit.metal");
         let source = NSString::from_str(shader_source);
 
-        let library = unsafe {
-            device
-                .raw()
-                .newLibraryWithSource_options_error(&source, None)
-        }
-        .map_err(|e| anyhow::anyhow!("Failed to compile shaders: {:?}", e))?;
+        let library = device
+            .raw()
+            .newLibraryWithSource_options_error(&source, None)
+            .map_err(|e| anyhow::anyhow!("Failed to compile shaders: {:?}", e))?;
 
         // Get shader functions
         let vertex_name = NSString::from_str("vertex_main");
@@ -70,22 +68,18 @@ impl RenderPipeline {
             // Enable blending for alpha
             attachment.setBlendingEnabled(true);
             attachment.setSourceRGBBlendFactor(objc2_metal::MTLBlendFactor::SourceAlpha);
-            attachment.setDestinationRGBBlendFactor(
-                objc2_metal::MTLBlendFactor::OneMinusSourceAlpha,
-            );
+            attachment
+                .setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
             attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
-            attachment.setDestinationAlphaBlendFactor(
-                objc2_metal::MTLBlendFactor::OneMinusSourceAlpha,
-            );
+            attachment
+                .setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
         }
 
         // Create pipeline state
-        let pipeline_state = unsafe {
-            device
-                .raw()
-                .newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor)
-        }
-        .map_err(|e| anyhow::anyhow!("Failed to create pipeline state: {:?}", e))?;
+        let pipeline_state = device
+            .raw()
+            .newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor)
+            .map_err(|e| anyhow::anyhow!("Failed to create pipeline state: {:?}", e))?;
 
         debug!("Render pipeline created successfully");
 

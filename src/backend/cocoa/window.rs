@@ -3,12 +3,10 @@
 use log::debug;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2::{define_class, msg_send, AllocAnyThread, DeclaredClass, MainThreadOnly};
+use objc2::{define_class, msg_send, DeclaredClass, MainThreadOnly};
 use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowDelegate, NSWindowStyleMask};
-use objc2_foundation::{
-    CGPoint, CGRect, CGSize, MainThreadMarker, NSNotification, NSObject, NSObjectProtocol,
-    NSString,
-};
+use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol, NSString};
 
 use crate::compositor::WindowId;
 
@@ -53,7 +51,10 @@ impl WayoaWindow {
         height: u32,
         title: &str,
     ) -> anyhow::Result<Self> {
-        let frame = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(width as f64, height as f64));
+        let frame = CGRect::new(
+            CGPoint::new(0.0, 0.0),
+            CGSize::new(width as f64, height as f64),
+        );
 
         let style = NSWindowStyleMask::Titled
             | NSWindowStyleMask::Closable
@@ -65,7 +66,7 @@ impl WayoaWindow {
                 mtm.alloc(),
                 frame,
                 style,
-                NSBackingStoreType::NSBackingStoreBuffered,
+                NSBackingStoreType::Buffered,
                 false,
             )
         };
@@ -80,7 +81,7 @@ impl WayoaWindow {
         // Create and set delegate
         let delegate = WayoaWindowDelegate::new(mtm, window_id);
         let delegate_obj: &ProtocolObject<dyn NSWindowDelegate> =
-            ProtocolObject::from_ref(delegate.as_ref());
+            ProtocolObject::from_ref(&*delegate);
         window.setDelegate(Some(delegate_obj));
 
         debug!(
@@ -97,9 +98,7 @@ impl WayoaWindow {
 
     /// Show the window
     pub fn show(&self) {
-        unsafe {
-            self.window.makeKeyAndOrderFront(None);
-        }
+        self.window.makeKeyAndOrderFront(None);
     }
 
     /// Hide the window
@@ -121,9 +120,7 @@ impl WayoaWindow {
     /// Set the window size
     pub fn set_size(&self, width: u32, height: u32) {
         let size = CGSize::new(width as f64, height as f64);
-        unsafe {
-            self.window.setContentSize(size);
-        }
+        self.window.setContentSize(size);
     }
 
     /// Set the window position
@@ -141,7 +138,10 @@ impl WayoaWindow {
     /// Get the content size (excluding title bar)
     pub fn content_size(&self) -> (u32, u32) {
         let content_rect = self.window.contentRectForFrameRect(self.window.frame());
-        (content_rect.size.width as u32, content_rect.size.height as u32)
+        (
+            content_rect.size.width as u32,
+            content_rect.size.height as u32,
+        )
     }
 
     /// Get the window ID
@@ -159,11 +159,12 @@ impl WayoaWindow {
 
     /// Set fullscreen state
     pub fn set_fullscreen(&self, fullscreen: bool) {
-        let is_fullscreen = self.window.styleMask().contains(NSWindowStyleMask::FullScreen);
+        let is_fullscreen = self
+            .window
+            .styleMask()
+            .contains(NSWindowStyleMask::FullScreen);
         if fullscreen != is_fullscreen {
-            unsafe {
-                self.window.toggleFullScreen(None);
-            }
+            self.window.toggleFullScreen(None);
         }
     }
 
@@ -171,24 +172,18 @@ impl WayoaWindow {
     pub fn set_maximized(&self, maximized: bool) {
         let is_zoomed = self.window.isZoomed();
         if maximized != is_zoomed {
-            unsafe {
-                self.window.zoom(None);
-            }
+            self.window.zoom(None);
         }
     }
 
     /// Minimize the window
     pub fn minimize(&self) {
-        unsafe {
-            self.window.miniaturize(None);
-        }
+        self.window.miniaturize(None);
     }
 
     /// Restore from minimized
     pub fn restore(&self) {
-        unsafe {
-            self.window.deminiaturize(None);
-        }
+        self.window.deminiaturize(None);
     }
 
     /// Check if window is key (focused)
@@ -276,16 +271,13 @@ define_class!(
     }
 );
 
-impl DeclaredClass for WayoaWindowDelegate {
-    type Ivars = WayoaWindowDelegateIvars;
-}
-
 impl WayoaWindowDelegate {
     fn new(mtm: MainThreadMarker, window_id: WindowId) -> Retained<Self> {
         let this = mtm.alloc::<Self>().set_ivars(WayoaWindowDelegateIvars {
             window_id_value: window_id.0,
         });
-        unsafe { msg_send![super(this), init] }
+        let this: Option<Retained<Self>> = unsafe { msg_send![super(this), init] };
+        this.expect("init failed")
     }
 }
 
